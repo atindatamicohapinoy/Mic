@@ -1,69 +1,46 @@
 import streamlit as st
 import pandas as pd
-import easyocr
 from PIL import Image
-import numpy as np
-import io
+import google.generativeai as genai
+import json
+import os
 
-st.set_page_config(page_title="GCash OCR - EasyOCR", layout="wide")
-st.title("📝 GCash Form Scanner - EasyOCR FREE")
+st.set_page_config(page_title="GCash OCR - Gemini AI", layout="wide")
+st.title("📝 GCash Form Scanner - Gemini AI")
 
-@st.cache_resource
-def load_ocr():
-    return easyocr.Reader(['en'], gpu=False)
+# Setup Gemini API
+GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"] if "GEMINI_API_KEY" in st.secrets else os.getenv("GEMINI_API_KEY")
+genai.configure(api_key=GEMINI_API_KEY)
 
-reader = load_ocr()
+def safe_generate_content(model_name, img, prompt):
+    """Try Gemini model with fallback"""
+    model = genai.GenerativeModel(model_name)
+    response = model.generate_content([prompt, img])
+    return response
 
-def extract_table(image):
-    """Extract table using EasyOCR"""
-    img_array = np.array(image)
+def extract_table_gemini(image):
+    """Extract table using Gemini instead of EasyOCR"""
+    prompt = """
+    Extract data from this GCash form into a JSON list.
+    Keys: "NAME", "STORE NAME", "PHONE NUMBER", "GCASH VERIFIED ACCOUNT?", "SIGNATURE".
+    If there is a checkmark or "Yes", return "Yes". If empty, return "".
+    Only return valid JSON array, no other text.
+    Example: [{"NAME": "Juan Dela Cruz", "STORE NAME": "Sari Sari Store", "PHONE NUMBER": "09171234567", "GCASH VERIFIED ACCOUNT?": "Yes", "SIGNATURE": ""}]
+    """
     
-    # Run OCR
-    results = reader.readtext(img_array)
+    try:
+        # Try Gemini 2.5 Flash first
+        response = safe_generate_content("gemini-2.5-flash", image, prompt)
+    except:
+        # Fallback to Gemini 2.5 Flash Lite
+        response = safe_generate_content("gemini-2.5-flash-lite", image, prompt)
     
-    # Parse results
-    all_text = []
-    for (bbox, text, confidence) in results:
-        y_center = (bbox[0][1] + bbox[2][1]) / 2
-        x_center = (bbox[0][0] + bbox[2][0]) / 2
-        all_text.append({
-            'text': text,
-            'x': x_center,
-            'y': y_center,
-            'conf': confidence
-        })
+    # Clean and parse JSON
+    json_text = response.text.strip()
+    if json_text.startswith("```json"):
+        json_text = json_text.replace("```json", "").replace("```", "").strip()
     
-    # Group by rows based on Y position
-    all_text.sort(key=lambda x: x['y'])
-    rows = []
-    current_row = []
-    last_y = -50
-    
-    for item in all_text:
-        if abs(item['y'] - last_y) > 20: # New row threshold
-            if current_row:
-                rows.append(current_row)
-            current_row = [item]
-            last_y = item['y']
-        else:
-            current_row.append(item)
-    
-    if current_row:
-        rows.append(current_row)
-    
-    # Sort each row by X and build table
-    table_data = []
-    for row in rows:
-        row.sort(key=lambda x: x['x'])
-        row_texts = [item['text'] for item in row if item['conf'] > 0.3]
-        
-        # Try to fit into 5 columns: NAME, STORE, PHONE, GCASH, SIGNATURE
-        if len(row_texts) >= 1 and any(c.isalpha() for c in row_texts[0]):
-            while len(row_texts) < 5:
-                row_texts.append('')
-            table_data.append(row_texts[:5])
-    
-    return table_data
+    return json.loads(json_text)
 
 uploaded_file = st.file_uploader("Upload GCash Form Photo", type=['png', 'jpg', 'jpeg'])
 
@@ -72,20 +49,14 @@ if uploaded_file:
     st.image(image, caption="Ready to scan", use_column_width=True)
     
     if st.button("🔍 Run AI Scan", type="primary"):
-        with st.spinner('EasyOCR is reading... ~10-20 seconds'):
+        with st.spinner('Gemini AI is reading... ~3-5 seconds'):
             try:
-                table_data = extract_table(image)
+                table_data = extract_table_gemini(image)
                 
                 if table_data:
                     st.success(f"✅ Extracted {len(table_data)} rows!")
                     
-                    df = pd.DataFrame(table_data, columns=[
-                        'NAME',
-                        'STORE NAME', 
-                        'PHONE NUMBER',
-                        'GCASH VERIFIED ACCOUNT?',
-                        'SIGNATURE'
-                    ])
+                    df = pd.DataFrame(table_data)
                     
                     st.subheader("📋 Verify Data - Edit mo kung may mali")
                     edited_df = st.data_editor(
@@ -108,6 +79,7 @@ if uploaded_file:
                     
             except Exception as e:
                 st.error(f"Error: {str(e)}")
+                st.code(f"Raw response: {response.text if 'response' in locals() else 'No response'}")
 else:
     st.info("👆 Upload a GCash form photo to start")
-    st.success("✅ 100% FREE - EasyOCR, No internet needed after install")
+    st.warning("⚠️ Needs Gemini API Key - Mas accurate kaysa EasyOCR")
