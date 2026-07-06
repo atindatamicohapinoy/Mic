@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
-from PIL import Image
 import google.generativeai as genai
 import json
 import os
+from PIL import Image
 
 st.set_page_config(page_title="GCash OCR - Gemini AI", layout="wide")
 st.title("📝 GCash Form Scanner - Gemini AI")
@@ -27,14 +27,13 @@ def extract_table_gemini(image):
     Only return valid JSON array, no other text.
     Example: [{"NAME": "Juan Dela Cruz", "STORE NAME": "Sari Sari Store", "PHONE NUMBER": "09171234567", "GCASH VERIFIED ACCOUNT?": "Yes", "SIGNATURE": ""}]
     """
-    
     try:
         # Try Gemini 2.5 Flash first
         response = safe_generate_content("gemini-2.5-flash", image, prompt)
     except:
         # Fallback to Gemini 2.5 Flash Lite
         response = safe_generate_content("gemini-2.5-flash-lite", image, prompt)
-    
+
     # Clean and parse JSON
     json_text = response.text.strip()
     if json_text.startswith("```json"):
@@ -55,31 +54,30 @@ if uploaded_file:
                 
                 if table_data:
                     st.success(f"✅ Extracted {len(table_data)} rows!")
-                    
                     df = pd.DataFrame(table_data)
                     
                     st.subheader("📋 Verify Data - Edit mo kung may mali")
                     edited_df = st.data_editor(
                         df,
                         num_rows="dynamic",
-                        use_container_width=True,
-                        height=400
+                        use_container_width=True
                     )
                     
+                    # Download button
                     csv = edited_df.to_csv(index=False).encode('utf-8')
                     st.download_button(
                         "📥 Download CSV",
                         csv,
-                        "gcash_form.csv",
+                        "gcash_data.csv",
                         "text/csv",
-                        use_container_width=True
+                        key='download-csv'
                     )
                 else:
-                    st.error("No table detected. Crop mo muna yung image para table lang yung kita.")
+                    st.warning("Walang na-detect na data. Try mo mas malinaw na picture.")
                     
             except Exception as e:
                 st.error(f"Error: {str(e)}")
                 st.code(f"Raw response: {response.text if 'response' in locals() else 'No response'}")
 else:
     st.info("👆 Upload a GCash form photo to start")
-    st.warning("⚠️ Needs Gemini API Key - Mas accurate kaysa EasyOCR")
+    st.warning("⚠ Needs Gemini API Key - Mas accurate kaysa EasyOCR")
