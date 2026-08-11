@@ -61,7 +61,6 @@ uploaded_file = st.file_uploader("Upload GCash Form Photo", type=['png', 'jpg', 
 
 if uploaded_file:
     image = Image.open(uploaded_file)
-    # INAYOS NA RITO (line 62): pinalitan ng use_container_width=True
     st.image(image, caption="Ready to scan", use_container_width=True)
     
     if st.button("🔍 Run AI Scan", type="primary"):
@@ -109,14 +108,25 @@ if st.session_state.df is not None:
                     client = get_gsheet_client()
                     sheet = client.open_by_key(SHEET_ID).sheet1
                     
-                    rows = st.session_state.df.values.tolist()
-                    
-                    # Add headers kung empty pa yung sheet
-                    if len(sheet.get_all_values()) == 0:
+                    # 1. Alamin ang totoong huling row batay sa Column A LANG
+                    col_a_values = sheet.col_values(1)
+                    next_row = len(col_a_values) + 1
+
+                    # 2. Add headers kung ganap na walang laman ang Sheet
+                    if len(col_a_values) == 0:
                         sheet.append_row(st.session_state.df.columns.tolist())
-                    
-                    sheet.append_rows(rows, value_input_option='USER_ENTERED')
-                    st.success(f"✅ {len(rows)} rows synced sa Google Sheets!")
+                        next_row = 2
+
+                    rows = st.session_state.df.values.tolist()
+
+                    # 3. Pilitin mag-insert simula sa Column A ng susunod na row (hal. A1284)
+                    sheet.update(
+                        range_name=f"A{next_row}",
+                        values=rows,
+                        value_input_option='USER_ENTERED'
+                    )
+
+                    st.success(f"✅ {len(rows)} rows synced sa Column A ng Google Sheets!")
                     st.balloons()
                     
             except Exception as e:
