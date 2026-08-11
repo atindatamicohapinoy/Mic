@@ -48,7 +48,9 @@ def extract_table_gemini(image):
     json_text = response.text.strip()
     if json_text.startswith("```json"):
         json_text = json_text.replace("```json", "").replace("```", "").strip()
-    
+    elif json_text.startswith("```"):
+        json_text = json_text.replace("```", "").strip()
+        
     return json.loads(json_text)
 
 # Initialize session state
@@ -59,7 +61,8 @@ uploaded_file = st.file_uploader("Upload GCash Form Photo", type=['png', 'jpg', 
 
 if uploaded_file:
     image = Image.open(uploaded_file)
-    st.image(image, caption="Ready to scan", use_column_width=True)
+    # INAYOS NA RITO (line 62): pinalitan ng use_container_width=True
+    st.image(image, caption="Ready to scan", use_container_width=True)
     
     if st.button("🔍 Run AI Scan", type="primary"):
         with st.spinner('Gemini AI is reading... ~3-5 seconds'):
